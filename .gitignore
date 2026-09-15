@@ -1,0 +1,9 @@
+.vscode/
+ops.txt
+config.json
+__pycache__/
+user.db
+temp/
+*.png
+*.jpg
+*.jpeg
