@@ -20,9 +20,11 @@ def select_image(level: int, item_type: str | None = None) -> dict:
             {"answer": "...", "imgs": ["path/to/img",...]}
             ```
     """
-    if item_type is None:
+    if item_type is None or item_type not in ["rocks", "minerals"]:
         item_type = random.choice(["rocks", "minerals"])
     difficulty = str(random.randint(1, min(level, levels["max_level"])))
+    while len(levels[difficulty][item_type]) < 1:
+        difficulty = str(random.randint(1, min(level, levels["max_level"])))
     answer = random.choice(levels[difficulty][item_type])
     imgs = [f"imgs/{item_type}/{answer}/{x}" for x in os.listdir(f"imgs/{item_type}/{answer}")]
     random.shuffle(imgs)

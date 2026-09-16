@@ -40,14 +40,16 @@ class AnswerSubmit(Modal, title="答案提交"):
         self.cog = cog
 
     async def on_submit(self, interaction: Interaction):
-        # Retrieve values entered by the user
-        answer = self.answer_input.value
         # Get user id
         uid = interaction.user.id
+        # Retrieve values entered by the user
+        user_answer = self.answer_input.value.lower()
+        real_answer = image_answer[uid]
         # Record user guess
-        user_guesses[uid].append(answer)
-        if image_answer[uid] != answer:  # If user guess wrong
-            await interaction.response.send_message(f"❌ {answer}", ephemeral=True)
+        user_guesses[uid].append(user_answer)
+        # If user guess wrong
+        if real_answer != user_answer and user_answer not in item_data[real_answer]["alias"]:
+            await interaction.response.send_message(f"❌ {user_answer}", ephemeral=True)
         else:  # If user guess right
             # mark all previous guess as wrong, and the last one right
             report_text = [f"❌ {x}" for x in user_guesses[uid]
@@ -55,7 +57,7 @@ class AnswerSubmit(Modal, title="答案提交"):
             # Calculate try count and points
             count = len(user_guesses[uid])
             # Get 1 point after 5 tries
-            score = int(item_data[answer]["points"] ** (1.25 - count / 4))
+            score = int(item_data[real_answer]["points"] ** (1.25 - count / 4))
             # Add points to the user's database
             level_change = await self.cog._add_points(uid, score)
             # Reset buttons
@@ -68,7 +70,7 @@ class AnswerSubmit(Modal, title="答案提交"):
             embed.add_field(name="分數", value=score)
             # Send report and reference url
             await interaction.followup.send(embed=embed)
-            await interaction.followup.send(item_data[answer]["url"])
+            await interaction.followup.send(item_data[real_answer]["url"])
             # Send level change message
             if level_change != 0:
                 await interaction.followup.send(embed=await self.cog._build_level_change_embed(level_change, self.cog.cache[uid]["level"]))
@@ -191,6 +193,11 @@ class Rock(Cog_Extension):
             await interaction.followup.send(item_data[image_answer[uid]]["url"])
             if level_change != 0:
                 await interaction.followup.send(embed=await self._build_level_change_embed(level_change, self.cache[uid]["level"]))
+            # Remove user data from play field
+            del image_index[uid]
+            del image_list[uid]
+            del image_answer[uid]
+            del user_guesses[uid]
 
         # Setup buttons
         button_more.callback = more_callback
