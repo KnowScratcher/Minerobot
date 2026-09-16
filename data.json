@@ -1,3 +1,4 @@
 {
-    "placeholder": "https://example.com"
+    "placeholder": {"url": "https://example.com", "hint": "placeholder", "points": 10},
+    "玄武岩": {"url": "https://zh.wikipedia.org/zh-tw/%E7%8E%84%E6%AD%A6%E5%B2%A9", "hint":"", "points": 10}
 }

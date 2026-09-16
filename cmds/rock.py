@@ -5,22 +5,28 @@ from discord.ext import commands
 from core.classes import Cog_Extension
 import helper.select as select
 import json
+from math import log
 
-image_index = {}
-image_list = {}
-image_answer = {}
-user_guesses = {}
+image_index: dict[int, int] = {}  # The index of the image currently shown
+image_list: dict[int, list] = {}  # The shuffled list of images
+image_answer: dict[int, str] = {}  # The answer to everyone's image
+user_guesses: dict[int, list] = {}  # The users' guess
+user_hint_index: dict[int, set] = {}  # The users' used hint
 
-item_data = {}
+item_data = {}  # The preloaded data of all items
 
-with open("data.json") as j:
+# Load the data into variable
+with open("data.json", "r", encoding="UTF-8") as j:
     item_data = json.load(j)
 
 
 class AnswerSubmit(Modal, title="答案提交"):
-    def __init__(self, cog: "Rock"):
-        super().__init__()
-        self.cog = cog
+    """The form for user to submit answer
+
+    Args:
+        cog (Rock): The object Rock currently using
+    """
+
     # Single-line text input
     answer_input = TextInput(
         label="你的答案",
@@ -29,54 +35,92 @@ class AnswerSubmit(Modal, title="答案提交"):
         max_length=50,
     )
 
+    def __init__(self, cog: "Rock"):
+        super().__init__()
+        self.cog = cog
+
     async def on_submit(self, interaction: Interaction):
         # Retrieve values entered by the user
         answer = self.answer_input.value
+        # Get user id
         uid = interaction.user.id
+        # Record user guess
         user_guesses[uid].append(answer)
-        if image_answer[uid] != answer:
+        if image_answer[uid] != answer:  # If user guess wrong
             await interaction.response.send_message(f"❌ {answer}", ephemeral=True)
-        else:
+        else:  # If user guess right
+            # mark all previous guess as wrong, and the last one right
             report_text = [f"❌ {x}" for x in user_guesses[uid]
                            [:-1]] + [f"✅ {user_guesses[uid][-1]}"]
+            # Calculate try count and points
             count = len(user_guesses[uid])
-            score = int(10**(1.25 - count / 4))
-            await self.cog._add_points(uid, score)
+            # Get 1 point after 5 tries
+            score = int(item_data[answer]["points"] ** (1.25 - count / 4))
+            # Add points to the user's database
+            level_change = await self.cog._add_points(uid, score)
+            # Reset buttons
             view = View(timeout=0)
             await interaction.response.edit_message(view=view)
-            embed = Embed(title="解題報告", description="\n".join(report_text), color=0x00ff00)
+            # Generate guess report
+            embed = Embed(title="恭喜答對", description="\n".join(
+                report_text), color=0x00ff00)
             embed.add_field(name="猜測次數", value=count)
             embed.add_field(name="分數", value=score)
-            print(1)
+            # Send report and reference url
             await interaction.followup.send(embed=embed)
-            await interaction.followup.send(item_data[answer])
+            await interaction.followup.send(item_data[answer]["url"])
+            # Send level change message
+            if level_change != 0:
+                await interaction.followup.send(embed=await self.cog._build_level_change_embed(level_change, self.cog.cache[uid]["level"]))
+            # Remove user data from play field
             del image_index[uid]
             del image_list[uid]
             del image_answer[uid]
             del user_guesses[uid]
 
+
 class Rock(Cog_Extension):
+    async def _build_level_change_embed(self, diff: int, new_level: int) -> Embed:
+        if diff > 0:
+            embed = Embed(title=f"⬆️ 恭喜您升級到 LV.{new_level}了", color=0x00ffff)
+        elif diff < 0:
+            embed = Embed(title=f"⬇️ 抱歉您降級到 LV.{new_level}了", color=0xff7700)
+        else:
+            return Embed()
+        return embed
+
+    async def _calculate_level(self, points: int):
+        return max(int(log(points/20) / log(5) + 2), 1)
+
     async def _add_points(self, uid: int, points: int):
+        new_level = await self._calculate_level(self.cache[uid]["points"] + points)
+        difference = new_level - self.cache[uid]["level"]
+        if difference != 0:
+            self.cache[uid]["level"] = new_level
+        # Update cache
         self.cache[uid]["points"] += points
-        assert self.db
-        await self.db.execute(
+        assert self.db  # Prevent database missing
+        await self.db.execute(  # Write to database
             """
-            INSERT INTO users (user_id, points)
-            VALUES (?, ?)
+            INSERT INTO users (user_id, points, level)
+            VALUES (?, ?, ?)
             ON CONFLICT(user_id) DO UPDATE SET
-            points = excluded.points
+            points = excluded.points,
+            level = excluded.level
             """,
-            (uid, self.cache[uid]["points"]),
+            (uid, self.cache[uid]["points"], self.cache[uid]["level"]),
         )
         await self.db.commit()
+        return difference
 
     async def _handle_first_join(self, uid: int):
-        if uid in self.cache:
+        if uid in self.cache:  # If user is already cached (played before)
             return
+        # New user
         user_data = {"points": 0, "level": 1}
-        self.cache[uid] = user_data
+        self.cache[uid] = user_data  # Create the user's data in cache
         assert self.db
-        await self.db.execute(
+        await self.db.execute(  # Write to database
             """
             INSERT INTO users (user_id, points, level)
             VALUES (?, ?, ?)
@@ -89,16 +133,23 @@ class Rock(Cog_Extension):
         await self.db.commit()
 
     async def _picture_flow(self, channel: Messageable, uid: int, item_type: str | None = None):
+        # Send waiting message to user
         wait_msg = await channel.send("請稍等，正在尋找圖片...")
-        if uid not in image_index:
+        if uid not in image_index:  # If the user was not playing
+            # Pick a image depending on the user's level and preference
             select_result = select.select_image(
                 self.cache[uid]["level"], item_type)
+            # Setup play field
             image_index[uid] = 0
             image_list[uid], image_answer[uid] = select_result["imgs"], select_result["answer"]
             user_guesses[uid] = []
-        else:
-            image_index[uid] = min(image_index[uid] + 1, len(image_list[uid]) - 1)
+            user_hint_index[uid] = set()
+        else:  # If user is playing (recursive-ing)
+            # Get the next image
+            image_index[uid] = min(image_index[uid] + 1,
+                                   len(image_list[uid]) - 1)  # Prevent index overflow
 
+        # Setup buttons
         button_more = Button(label="再來一張", style=ButtonStyle.blurple)
         button_guess = Button(label="提交猜想", style=ButtonStyle.green)
         button_hint = Button(label="提示", style=ButtonStyle.gray)
@@ -107,15 +158,45 @@ class Rock(Cog_Extension):
         async def more_callback(interaction: Interaction):
             if interaction.user.id == uid:
                 view = View(timeout=0)
+                # Delete buttons
                 await interaction.response.edit_message(view=view)
+                # Recursive (gets next image)
                 await self._picture_flow(channel, uid, item_type)
 
         async def guess_callback(interaction: Interaction):
             if interaction.user.id == uid:
+                # Send answer submit form
                 await interaction.response.send_modal(AnswerSubmit(cog=self))
 
+        async def hint_callback(interaction: Interaction):
+            pass
+
+        async def skip_callback(interaction: Interaction):
+            # Mark all guesses wrong and add the correct answer
+            report_text = [f"❌ {x}" for x in user_guesses[uid]
+                           ] + [f"➡️ {image_answer[uid]}"]
+            # Calculate score
+            count = len(user_guesses[uid])
+            score = -(self.cache[uid]["level"] - 1)*5
+            level_change = await self._add_points(uid, score)
+            # Reset buttons
+            view = View(timeout=0)
+            await interaction.response.edit_message(view=view)
+            # Generate report
+            embed = Embed(title="失敗", description="\n".join(
+                report_text), color=0xff0000)
+            embed.add_field(name="猜測次數", value=count)
+            embed.add_field(name="分數", value=score)
+            await interaction.followup.send(embed=embed)
+            await interaction.followup.send(item_data[image_answer[uid]]["url"])
+            if level_change != 0:
+                await interaction.followup.send(embed=await self._build_level_change_embed(level_change, self.cache[uid]["level"]))
+
+        # Setup buttons
         button_more.callback = more_callback
         button_guess.callback = guess_callback
+        button_hint.callback = hint_callback
+        button_skip.callback = skip_callback
 
         view = View(timeout=0)
         view.add_item(button_more)
@@ -124,9 +205,9 @@ class Rock(Cog_Extension):
         view.add_item(button_skip)
         index = image_index[uid]
         file = File(image_list[uid][index])
-        if index < len(image_list[uid]) - 1:
+        if index < len(image_list[uid]) - 1:  # If is not the last image
             await channel.send(content=f"<@{uid}> 圖片準備好了，請猜出這是什麼", file=file, view=view)
-        else:
+        else:  # If is last image
             view = View(timeout=0)
             button_more.disabled = True
             view.add_item(button_more)
@@ -139,7 +220,7 @@ class Rock(Cog_Extension):
     @commands.command()
     async def p(self, ctx, item_type=None):
         await self._handle_first_join(ctx.message.author.id)
-        await self._picture_flow(ctx.channel, ctx.message.author.id)
+        await self._picture_flow(ctx.channel, ctx.message.author.id, item_type)
 
 
 async def setup(bot):

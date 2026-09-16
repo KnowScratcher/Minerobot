@@ -3,7 +3,7 @@ import json
 import os
 
 levels = {}
-with open("levels.json") as j:
+with open("levels.json", "r", encoding="UTF-8") as j:
     levels = json.load(j)
 
 

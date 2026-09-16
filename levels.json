@@ -1,4 +1,5 @@
 {
-    "1": {"rocks":["placeholder"], "minerals":["placeholder"]},
-    "max_level": 1
+    "1": {"rocks":["placeholder", "玄武岩"], "minerals":["placeholder"]},
+    "max_level": 1,
+    "levels": [20, 100, 500]
 }
