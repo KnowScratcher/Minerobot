@@ -158,22 +158,26 @@ class Rock(Cog_Extension):
         button_skip = Button(label="跳過", style=ButtonStyle.red)
 
         async def more_callback(interaction: Interaction):
-            if interaction.user.id == uid:
-                view = View(timeout=0)
-                # Delete buttons
-                await interaction.response.edit_message(view=view)
-                # Recursive (gets next image)
-                await self._picture_flow(channel, uid, item_type)
+            if interaction.user.id != uid:
+                return
+            view = View(timeout=0)
+            # Delete buttons
+            await interaction.response.edit_message(view=view)
+            # Recursive (gets next image)
+            await self._picture_flow(channel, uid, item_type)
 
         async def guess_callback(interaction: Interaction):
-            if interaction.user.id == uid:
-                # Send answer submit form
-                await interaction.response.send_modal(AnswerSubmit(cog=self))
+            if interaction.user.id != uid:
+                return
+            # Send answer submit form
+            await interaction.response.send_modal(AnswerSubmit(cog=self))
 
         async def hint_callback(interaction: Interaction):
             pass
 
         async def skip_callback(interaction: Interaction):
+            if interaction.user.id != uid:
+                return
             # Mark all guesses wrong and add the correct answer
             report_text = [f"❌ {x}" for x in user_guesses[uid]
                            ] + [f"➡️ {image_answer[uid]}"]
