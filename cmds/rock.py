@@ -62,9 +62,12 @@ class AnswerSubmit(Modal, title="答案提交"):
             report_text = [f"❌ {x}" for x in user_guesses[uid]
                            [:-1]] + [f"✅ {user_guesses[uid][-1]}"]
             # Calculate try count and points
-            count = len(user_guesses[uid])
+            try_count = len(user_guesses[uid])
+            image_count = image_index[uid] + 1
+            hint_count = len(user_hints[uid])
             # Get 1 point after 5 tries
-            score = int(item_data[real_answer]["points"] ** (1.25 - count / 4))
+            score = max(0, int(item_data[real_answer]["points"]
+                        ** (1.25 - try_count / 4)) - image_count // 3 - hint_count // 2)
             # Add points to the user's database
             level_change = await self.cog._add_points(uid, score)
             # Reset buttons
@@ -73,7 +76,9 @@ class AnswerSubmit(Modal, title="答案提交"):
             # Generate guess report
             embed = Embed(title="恭喜答對", description="\n".join(
                 report_text), color=0x00ff00)
-            embed.add_field(name="猜測次數", value=count)
+            embed.add_field(name="猜測次數", value=try_count)
+            embed.add_field(name="使用圖片數", value=image_count)
+            embed.add_field(name="使用提示數", value=hint_count)
             embed.add_field(name="分數", value=score)
             # Send report and reference url
             await interaction.followup.send(embed=embed)
