@@ -20,6 +20,10 @@ def select_image(level: int, item_type: str | None = None) -> dict:
             {"answer": "...", "imgs": ["path/to/img",...]}
             ```
     """
+    if item_type in ["r", "rock"]:
+        item_type = "rocks"
+    if item_type in ["m", "min", "mineral"]:
+            item_type = "minerals"
     if item_type is None or item_type not in ["rocks", "minerals"]:
         item_type = random.choice(["rocks", "minerals"])
     difficulty = str(random.randint(1, min(level, levels["max_level"])))

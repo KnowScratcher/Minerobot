@@ -17,7 +17,7 @@ with open("ops.txt", "r", encoding="UTF-8") as op:
     admin = re.split(",", op.read())
 
 intents = discord.Intents.all()
-bot = commands.Bot(command_prefix='c.', intents=intents)
+bot = commands.Bot(command_prefix='cc.', intents=intents)
 bot.remove_command("help")
 
 no_permission_embed = discord.Embed(
