@@ -20,7 +20,6 @@ hints = {
     "grain": ("顆粒大小", "✨"),
     "foliation": ("葉理", "📎")
 }  # the label and value pair of hint menu
-# TODO: delete this
 
 # Load the data into variable
 with open("data.json", "r", encoding="UTF-8") as j:
@@ -149,7 +148,9 @@ class Rock(Cog_Extension):
     async def _build_hint_selection_menu(self, uid: int):
         answer = image_answer[uid]
         options = [SelectOption(label=label[0], value=value, emoji=label[1])
-                   for value, label in hints.items() if value not in user_guesses]
+                   for value, label in hints.items() if value not in user_hints[uid]]
+        if len(options) == 0:
+            return False
         menu = Select(placeholder="請選一項提示",
                       min_values=1,
                       max_values=1,
@@ -159,9 +160,10 @@ class Rock(Cog_Extension):
             user_answer = menu.values[0]
             real_answer = image_answer[uid]
             user_hints[uid].add(user_answer)
-            await interaction.response.send_message(f"這個東西的{hints[user_answer][0]}是: {item_data[real_answer]['hints'][{user_answer}] if user_answer in item_data[real_answer]['hints'] else '不適用'}", ephemeral=True)
+            await interaction.response.edit_message(content=f"這個東西的{hints[user_answer][0]}是: {item_data[real_answer]['hints'][user_answer] if user_answer in item_data[real_answer]['hints'] else '不適用'}", view=View())
 
         menu.callback = menu_callback
+        return menu
 
     async def _picture_flow(self, channel: Messageable, uid: int, item_type: str | None = None):
         # Send waiting message to user
@@ -202,7 +204,15 @@ class Rock(Cog_Extension):
             await interaction.response.send_modal(AnswerSubmit(cog=self))
 
         async def hint_callback(interaction: Interaction):
-            pass
+            if interaction.user.id != uid:
+                return
+            view = View(timeout=0)
+            menu = await self._build_hint_selection_menu(uid)
+            if not menu:
+                await interaction.response.send_message("很抱歉，你已經用完提示了", ephemeral=True)
+                return
+            view.add_item(menu)
+            await interaction.response.send_message(view=view, ephemeral=True)
 
         async def skip_callback(interaction: Interaction):
             if interaction.user.id != uid:
