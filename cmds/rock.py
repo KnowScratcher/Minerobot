@@ -1,6 +1,6 @@
-from discord import File, ButtonStyle, Interaction, Embed
+from discord import File, ButtonStyle, Interaction, Embed, SelectOption
 from discord.abc import Messageable
-from discord.ui import Button, View, Modal, TextInput
+from discord.ui import Button, View, Modal, TextInput, Select
 from discord.ext import commands
 from core.classes import Cog_Extension
 import helper.select as select
@@ -11,9 +11,16 @@ image_index: dict[int, int] = {}  # The index of the image currently shown
 image_list: dict[int, list] = {}  # The shuffled list of images
 image_answer: dict[int, str] = {}  # The answer to everyone's image
 user_guesses: dict[int, list] = {}  # The users' guess
-user_hint_index: dict[int, set] = {}  # The users' used hint
+user_hints: dict[int, set] = {}  # The users' used hint
 
 item_data = {}  # The preloaded data of all items
+hints = {
+    "lithology": ("岩性", "🪨"),
+    "felsmaf": ("酸基性", "🧪"),
+    "grain": ("顆粒大小", "✨"),
+    "foliation": ("葉理", "📎")
+}  # the label and value pair of hint menu
+# TODO: delete this
 
 # Load the data into variable
 with open("data.json", "r", encoding="UTF-8") as j:
@@ -134,6 +141,23 @@ class Rock(Cog_Extension):
         )
         await self.db.commit()
 
+    async def _build_hint_selection_menu(self, uid: int):
+        answer = image_answer[uid]
+        options = [SelectOption(label=label[0], value=value, emoji=label[1])
+                   for value, label in hints.items() if value not in user_guesses]
+        menu = Select(placeholder="請選一項提示",
+                      min_values=1,
+                      max_values=1,
+                      options=options)
+
+        async def menu_callback(interaction: Interaction):
+            user_answer = menu.values[0]
+            real_answer = image_answer[uid]
+            user_hints[uid].add(user_answer)
+            await interaction.response.send_message(f"這個東西的{hints[user_answer][0]}是: {item_data[real_answer]['hints'][{user_answer}] if user_answer in item_data[real_answer]['hints'] else '不適用'}", ephemeral=True)
+
+        menu.callback = menu_callback
+
     async def _picture_flow(self, channel: Messageable, uid: int, item_type: str | None = None):
         # Send waiting message to user
         wait_msg = await channel.send("請稍等，正在尋找圖片...")
@@ -145,7 +169,7 @@ class Rock(Cog_Extension):
             image_index[uid] = 0
             image_list[uid], image_answer[uid] = select_result["imgs"], select_result["answer"]
             user_guesses[uid] = []
-            user_hint_index[uid] = set()
+            user_hints[uid] = set()
         else:  # If user is playing (recursive-ing)
             # Get the next image
             image_index[uid] = min(image_index[uid] + 1,
